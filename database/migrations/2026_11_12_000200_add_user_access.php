@@ -12,7 +12,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            //
+            $table->string('role', 20)->default('user');
+            $table->boolean('active')->default(true);
+            $table->json('permissions')->nullable();
+            $table->json('property_ids')->nullable();
         });
     }
 
@@ -22,7 +25,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            //
+            $table->dropColumn(['role', 'active', 'permissions', 'property_ids']);
         });
     }
 };

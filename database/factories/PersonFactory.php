@@ -2,23 +2,18 @@
 
 namespace Database\Factories;
 
-use App\Models\Person;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/**
- * @extends Factory<Person>
- */
+/** @extends Factory<\App\Models\Person> */
 class PersonFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
-            //
+            'name' => fake()->name(),
+            'identity_number' => fake()->unique()->numerify('V-########'),
+            'email' => fake()->safeEmail(),
+            'phone' => '04140000000',
         ];
     }
 }

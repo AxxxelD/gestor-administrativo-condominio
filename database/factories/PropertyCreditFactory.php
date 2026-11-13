@@ -2,23 +2,19 @@
 
 namespace Database\Factories;
 
-use App\Models\PropertyCredit;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/**
- * @extends Factory<PropertyCredit>
- */
+/** @extends Factory<\App\Models\PropertyCredit> */
 class PropertyCreditFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
-            //
+            'property_id' => \App\Models\Property::factory(),
+            'amount_usd_cents' => 1000,
+            'credited_on' => '2026-01-01',
+            'kind' => 'opening',
+            'status' => 'active',
         ];
     }
 }

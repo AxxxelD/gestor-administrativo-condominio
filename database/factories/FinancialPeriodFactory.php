@@ -2,23 +2,18 @@
 
 namespace Database\Factories;
 
-use App\Models\FinancialPeriod;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/**
- * @extends Factory<FinancialPeriod>
- */
+/** @extends Factory<\App\Models\FinancialPeriod> */
 class FinancialPeriodFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
-            //
+            'month' => '2026-11',
+            'status' => 'draft',
+            'reserve_basis_points' => 1000,
+            'units_count' => 90,
         ];
     }
 }

@@ -2,23 +2,18 @@
 
 namespace Database\Factories;
 
-use App\Models\FundOpening;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/**
- * @extends Factory<FundOpening>
- */
+/** @extends Factory<\App\Models\FundOpening> */
 class FundOpeningFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
-            //
+            'type' => 'reserve',
+            'amount_usd_cents' => 0,
+            'date' => '2026-01-01',
+            'actor_id' => \App\Models\User::factory(),
         ];
     }
 }

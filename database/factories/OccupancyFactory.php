@@ -2,23 +2,18 @@
 
 namespace Database\Factories;
 
-use App\Models\Occupancy;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/**
- * @extends Factory<Occupancy>
- */
+/** @extends Factory<\App\Models\Occupancy> */
 class OccupancyFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
-            //
+            'property_id' => \App\Models\Property::factory(),
+            'person_id' => \App\Models\Person::factory(),
+            'relationship' => 'owner',
+            'starts_on' => '2026-01-01',
         ];
     }
 }

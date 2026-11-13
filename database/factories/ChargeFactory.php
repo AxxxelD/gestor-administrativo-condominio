@@ -2,23 +2,22 @@
 
 namespace Database\Factories;
 
-use App\Models\Charge;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/**
- * @extends Factory<Charge>
- */
+/** @extends Factory<\App\Models\Charge> */
 class ChargeFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
-            //
+            'property_id' => \App\Models\Property::factory(),
+            'kind' => 'opening',
+            'description' => 'Deuda inicial',
+            'charged_on' => '2026-01-01',
+            'due_on' => '2026-01-01',
+            'principal_usd_cents' => 10000,
+            'reserve_usd_cents' => 0,
+            'provision_usd_cents' => 0,
         ];
     }
 }
