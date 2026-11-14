@@ -1,58 +1,75 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Gestor administrativo de condominio
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplicación local para el Sector C de Terrazas del Atlántico. Incluye comunidad y censo, usuarios y permisos, períodos de cobro, transferencias, gastos, bancos, fondos, documentos PDF y preparación de correos.
 
-## About Laravel
+## Iniciar el proyecto
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Abre una terminal en esta carpeta y ejecuta:
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```powershell
+npm run dev
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Espera el mensaje LISTO y abre **http://127.0.0.1:8000**. Mantén la terminal abierta. Ctrl + C detiene los servidores iniciados por esa terminal. También puedes abrir `iniciar.bat`; el antiguo `start-dev.bat` llama al mismo iniciador.
 
-## Contributing
+Este comando comprueba MariaDB, inicia Laravel y Vite, y activa el trabajador de correos cuando hay un servicio de correo configurado. No borra la base, no vuelve a sembrar datos y no aplica migraciones automáticamente.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Para comprobar los servicios desde otra terminal:
 
-## Code of Conduct
+```powershell
+npm run comprobar
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+La aplicación usa el puerto 8000, Vite el 5173 y MariaDB el 3306. El puerto 5173 no es la dirección de la aplicación. Se utiliza IPv4 local explícito para evitar cambios de resolución de localhost al conectar una VPN. La interfaz y las fuentes no necesitan Internet. Consultar tasas externas o enviar correos sí requiere conexión. Si una política de VPN bloquea incluso conexiones locales, esa política debe revisarse en el cliente VPN; el proyecto no cambia sus opciones de seguridad.
 
-## Security Vulnerabilities
+## Qué hace cada herramienta
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+| Herramienta | Función en este proyecto |
+| --- | --- |
+| PHP 8.4 | Ejecuta la lógica del servidor. |
+| Laravel 13 | Gestiona rutas, sesiones, permisos, validaciones, base de datos y operaciones financieras. |
+| Artisan | Es la consola incluida en Laravel; ejecuta migraciones, pruebas, servidores y tareas. |
+| Composer | Instala las bibliotecas de PHP. |
+| MariaDB | Guarda los datos; se usa mediante el controlador compatible con MySQL. |
+| Beekeeper Studio | Permite consultar visualmente esa base. |
+| JavaScript y Vue 3 | Construyen las pantallas y sus formularios interactivos en el navegador. |
+| Node.js y npm | Ejecutan las herramientas de desarrollo y gestionan sus paquetes. |
+| Vite | Sirve y actualiza los recursos durante desarrollo; compila la versión distribuible. |
+| CSS y Tailwind | Definen el estilo de las pantallas. |
+| Dompdf | Genera los avisos, comprobantes y estados de cuenta en PDF. |
+| PHPUnit y Pint | Comprueban el funcionamiento y uniforman el formato del código PHP. |
+| Git | Conserva el historial del código. |
 
-## License
+Laragon es una alternativa para reunir y administrar herramientas locales. Este proyecto ya dispone de PHP, MariaDB y Node instalados directamente. No es necesario migrar a Laragon para continuar.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Una acción en Vue envía una petición a Laravel. Laravel comprueba la sesión y los permisos, valida los datos, aplica las reglas y guarda en MariaDB. Devuelve una respuesta que Vue presenta en pantalla. Vite participa en el desarrollo de la interfaz, pero no sustituye a Laravel ni a la base de datos.
+
+## Reglas financieras implementadas
+
+- Cuentas y deudas en USD; transferencias bancarias reales en Bs con tasa, fuente y fecha de referencia guardadas.
+- La deuda se genera al emitir manualmente el período. No se impone vencimiento ni recargo automático.
+- Reparto entre los 90 TH activos, cuatro grupos de conceptos y reserva configurable, inicialmente 10 %.
+- Gastos habituales editables, conceptos negativos, provisiones y ajuste explícito de redondeo.
+- Abonos a las deudas más antiguas, excedentes a favor, pagos repartidos entre inmuebles y anulaciones trazables.
+- Registrar un concepto por cobrar y registrar su pago bancario son operaciones distintas.
+- Los documentos emitidos conservan una copia de sus datos. La reserva cobrada se distingue de la facturada.
+
+## Demostración y correo
+
+La base de demostración contiene personas, inmuebles, movimientos y tasas ficticias. No son datos operativos. Las cuentas de demostración son `admin@condominio.test`, `super@condominio.test` y `vecino@condominio.test`; la contraseña aleatoria se entrega al ejecutar el sembrador por primera vez y no se guarda en este documento.
+
+Con `MAIL_MAILER=log` los correos quedan en vista previa. Para entregarlos debe configurarse un proveedor en `.env`, incluyendo remitente y credenciales. No publiques `.env` ni lo subas a Git. La emisión mensual sigue siendo una decisión de la administradora; desde un período emitido se preparan los avisos individuales.
+
+## Desarrollo y comprobaciones
+
+```powershell
+php artisan test --compact
+npm run build
+php artisan migrate --no-interaction
+```
+
+Las pruebas usan SQLite en memoria, separada de la base local. `migrate` aplica las migraciones pendientes conservando los registros existentes. No utilices `migrate:fresh` sobre datos que quieras conservar.
+
+`npm run dev:assets` inicia únicamente Vite. `composer run dev` utiliza el mismo inicio completo que `npm run dev`.
+
+La interfaz principal está en `resources/js/Aplicacion.vue`; los diálogos en `resources/js/components/DialogoFormulario.vue`; las traducciones del servidor en `lang/es`. Se mantienen los nombres y claves técnicas de Laravel y de la base de datos para conservar sus convenciones y las migraciones existentes.

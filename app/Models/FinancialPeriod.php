@@ -2,27 +2,29 @@
 
 namespace App\Models;
 
+use Database\Factories\FinancialPeriodFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Validation\ValidationException;
 
 #[Fillable(['month', 'status', 'reserve_basis_points', 'due_on', 'net_usd_cents', 'reserve_usd_cents', 'total_usd_cents', 'unit_charge_usd_cents', 'rounding_adjustment_usd_cents', 'units_count', 'items_snapshot', 'issued_at', 'issued_by'])]
 class FinancialPeriod extends Model
 {
-    /** @use HasFactory<\Database\Factories\FinancialPeriodFactory> */
+    /** @use HasFactory<FinancialPeriodFactory> */
     use HasFactory;
 
     protected static function booted(): void
     {
         static::updating(function (FinancialPeriod $period): void {
             if ($period->getOriginal('status') === 'issued' && $period->isDirty()) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['period' => 'Un período emitido conserva sus importes y conceptos originales.']);
+                throw ValidationException::withMessages(['period' => 'Un período emitido conserva sus importes y conceptos originales.']);
             }
         });
         static::deleting(function (FinancialPeriod $period): void {
             if ($period->status === 'issued') {
-                throw \Illuminate\Validation\ValidationException::withMessages(['period' => 'Un período emitido conserva su historial.']);
+                throw ValidationException::withMessages(['period' => 'Un período emitido conserva su historial.']);
             }
         });
     }

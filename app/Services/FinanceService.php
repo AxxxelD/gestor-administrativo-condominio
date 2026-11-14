@@ -4,15 +4,12 @@ namespace App\Services;
 
 use App\Models\Allocation;
 use App\Models\BankAccount;
-use App\Models\Charge;
 use App\Models\Expense;
 use App\Models\FinancialPeriod;
 use App\Models\FundOpening;
 use App\Models\FundUse;
 use App\Models\Payment;
-use App\Models\PeriodItem;
 use App\Models\Property;
-use App\Models\PropertyCredit;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -42,7 +39,7 @@ class FinanceService
             if ($signedUsdCents > 0) {
                 $property->charges()->create([
                     'kind' => 'opening', 'description' => 'Saldo deudor inicial',
-                    'charged_on' => $date, 'due_on' => $date,
+                    'charged_on' => $date, 'due_on' => null,
                     'principal_usd_cents' => $signedUsdCents, 'created_by' => $actorId,
                 ]);
             }
@@ -117,10 +114,10 @@ class FinanceService
             if ($properties->count() !== 90) {
                 $this->fail('properties', 'La distribución del Sector C requiere los 90 inmuebles activos.');
             }
-            $chargedOn = $period->month.'-01';
-            $dueOn = $period->due_on?->toDateString() ?? Carbon::parse($chargedOn)->endOfMonth()->toDateString();
-            if ($dueOn < $chargedOn) {
-                $this->fail('due_on', 'El vencimiento no puede ser anterior al período.');
+            $chargedOn = now()->toDateString();
+            $dueOn = $period->due_on?->toDateString();
+            if ($dueOn !== null && $dueOn < $chargedOn) {
+                $this->fail('due_on', 'El vencimiento no puede ser anterior a la emisión.');
             }
             foreach ($properties as $property) {
                 if ($property->opening_date !== null && $property->opening_date->toDateString() > $chargedOn) {
@@ -130,9 +127,14 @@ class FinanceService
             $reserve = Money::ratio($net, $period->reserve_basis_points, 10000);
             $total = $net + $reserve;
             $unit = Money::ratio($total, 1, 90);
-            $unitReserve = min($unit, Money::ratio($reserve, 1, 90));
-            $unitPrincipal = $unit - $unitReserve;
-            $unitProvision = min($unitPrincipal, Money::ratio($provision, 1, 90));
+            $principalTotal = $unit * 90 - $reserve;
+            if ($principalTotal < 0 || $provision > $principalTotal) {
+                $this->fail('items', 'El redondeo de la cuota reduciría la reserva o la provisión. Aumenta el importe operativo para absorber el ajuste antes de emitir.');
+            }
+            $baseReserve = intdiv($reserve, 90);
+            $reserveRemainder = $reserve % 90;
+            $baseProvision = intdiv($provision, 90);
+            $provisionRemainder = $provision % 90;
             $period->update([
                 'status' => 'issued', 'net_usd_cents' => $net,
                 'reserve_usd_cents' => $reserve, 'total_usd_cents' => $total,
@@ -149,7 +151,14 @@ class FinanceService
                     'used_on' => now()->toDateString(), 'actor_id' => $actorId,
                 ]);
             }
-            foreach ($properties as $property) {
+            foreach ($properties as $index => $property) {
+                $unitReserve = $baseReserve + ($index < $reserveRemainder ? 1 : 0);
+                $unitPrincipal = $unit - $unitReserve;
+                $unitProvision = $baseProvision;
+                if ($provisionRemainder > 0 && $unitProvision < $unitPrincipal) {
+                    $unitProvision++;
+                    $provisionRemainder--;
+                }
                 $property->charges()->create([
                     'financial_period_id' => $period->id, 'kind' => 'period',
                     'description' => 'Cuota de condominio '.$period->month,
@@ -190,7 +199,7 @@ class FinanceService
             }
             $bank = BankAccount::query()->lockForUpdate()->findOrFail($data['bank_account_id']);
             $this->checkBankDate($bank, $data['paid_on']);
-            if (Payment::query()->where('bank_account_id', $bank->id)->whereDate('paid_on', $data['paid_on'])->where('reference', $data['reference'])->exists()) {
+            if (Payment::query()->where('status', 'posted')->where('bank_account_id', $bank->id)->whereDate('paid_on', $data['paid_on'])->where('reference', $data['reference'])->exists()) {
                 $this->fail('reference', 'La referencia ya fue registrada para esta cuenta y fecha.');
             }
             $properties = Property::query()->whereIn('id', array_column($data['splits'], 'property_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
@@ -203,6 +212,8 @@ class FinanceService
                 'bank_account_id' => $bank->id, 'paid_on' => $data['paid_on'],
                 'amount_bs_cents' => $data['amount_bs_cents'], 'rate_micros' => $data['rate_micros'],
                 'amount_usd_cents' => $amountUsd, 'reference' => $data['reference'],
+                'rate_source' => $data['rate_source'] ?? null,
+                'rate_reference_date' => $data['rate_reference_date'] ?? null,
                 'idempotency_key' => $data['idempotency_key'], 'request_hash' => $hash,
                 'created_by' => $actorId, 'status' => 'posted',
             ]);
@@ -239,6 +250,7 @@ class FinanceService
             if ($this->bankBalance($bank) < 0 || $this->fundBalance('reserve') < 0 || $this->fundBalance('provision') < 0) {
                 $this->fail('payment', 'El dinero de este pago ya respalda egresos o uso de fondos. Corrige primero esos movimientos.');
             }
+            $this->checkHistoricalBalances($bank, $payment->paid_on->toDateString());
 
             return $payment->load('credits.property');
         }, 3);
@@ -251,6 +263,7 @@ class FinanceService
             'description' => ['required', 'string', 'max:255'],
             'fund' => ['required', Rule::in(['operating', 'reserve', 'provision'])],
             'period_item_id' => ['nullable', 'integer', 'exists:period_items,id'],
+            'reference' => ['nullable', 'string', 'max:255'],
         ])->validate();
         $amountUsd = Money::bsToUsd((int) $data['amount_bs_cents'], (int) $data['rate_micros']);
         if ($amountUsd < 1) {
@@ -278,14 +291,20 @@ class FinanceService
                 $this->fail('fund', 'La provisión de ese concepto ya fue utilizada al emitir. Registra su salida bancaria como gasto operativo.');
             }
 
-            return Expense::query()->create([
+            $expense = Expense::query()->create([
                 'bank_account_id' => $bank->id, 'period_item_id' => $data['period_item_id'] ?? null,
                 'description' => $data['description'], 'paid_on' => $data['paid_on'],
                 'amount_bs_cents' => $data['amount_bs_cents'], 'rate_micros' => $data['rate_micros'],
                 'amount_usd_cents' => $amountUsd, 'fund' => $data['fund'],
+                'reference' => $data['reference'] ?? null,
+                'rate_source' => $data['rate_source'] ?? null,
+                'rate_reference_date' => $data['rate_reference_date'] ?? null,
                 'idempotency_key' => $data['idempotency_key'], 'request_hash' => $hash,
                 'created_by' => $actorId, 'status' => 'posted',
             ]);
+            $this->checkHistoricalBalances($bank, $data['paid_on']);
+
+            return $expense;
         }, 3);
     }
 
@@ -307,7 +326,7 @@ class FinanceService
     /** @return array<string, mixed> */
     public function propertyStatement(Property $property): array
     {
-        $charges = $property->charges()->with(['allocations' => fn ($query) => $query->whereNull('voided_at')])->orderBy('due_on')->orderBy('id')->get();
+        $charges = $property->charges()->with(['allocations' => fn ($query) => $query->whereNull('voided_at')])->orderBy('charged_on')->orderBy('id')->get();
         $credits = $property->credits()->where('status', 'active')->with(['allocations' => fn ($query) => $query->whereNull('voided_at'), 'payment'])->orderBy('credited_on')->orderBy('id')->get();
         $debt = 0;
         $overdue = 0;
@@ -317,7 +336,7 @@ class FinanceService
             $remaining = $charge->principal_usd_cents + $charge->reserve_usd_cents - $paid;
             $charge->setAttribute('outstanding_usd_cents', $remaining);
             $debt += $remaining;
-            if ($charge->due_on->toDateString() < now()->toDateString()) {
+            if ($charge->due_on !== null && $charge->due_on->toDateString() < now()->toDateString()) {
                 $overdue += $remaining;
             }
         }
@@ -389,7 +408,7 @@ class FinanceService
 
     private function applyCredits(Property $property): void
     {
-        $charges = $property->charges()->orderBy('due_on')->orderBy('charged_on')->orderBy('id')->lockForUpdate()->get();
+        $charges = $property->charges()->orderBy('charged_on')->orderBy('id')->lockForUpdate()->get();
         $credits = $property->credits()->where('status', 'active')->orderBy('credited_on')->orderBy('id')->lockForUpdate()->get();
         foreach ($credits as $credit) {
             $applied = $credit->allocations()->whereNull('voided_at');
@@ -429,6 +448,8 @@ class FinanceService
             'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'amount_bs_cents' => ['required', 'integer', 'between:1,'.self::MAX_AMOUNT],
             'rate_micros' => ['required', 'integer', 'between:1,'.self::MAX_AMOUNT],
+            'rate_source' => ['nullable', 'string', 'max:255'],
+            'rate_reference_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:paid_on'],
             'idempotency_key' => ['required', 'string', 'max:255'],
         ];
     }
@@ -437,6 +458,24 @@ class FinanceService
     {
         if (! $bank->active || ($bank->opening_date !== null && $date < $bank->opening_date->toDateString())) {
             $this->fail('bank_account_id', 'Selecciona una cuenta activa y una fecha igual o posterior a su apertura.');
+        }
+    }
+
+    private function checkHistoricalBalances(BankAccount $bank, string $since): void
+    {
+        $bankDates = $bank->expenses()->where('status', 'posted')->whereDate('paid_on', '>=', $since)->pluck('paid_on');
+        foreach ($bankDates->unique() as $date) {
+            if ($this->bankBalance($bank, Carbon::parse($date)->toDateString()) < 0) {
+                $this->fail('paid_on', 'Este movimiento dejaría un saldo bancario negativo en una fecha con egresos ya registrados.');
+            }
+        }
+        $fundDates = Expense::query()->where('status', 'posted')->whereIn('fund', ['reserve', 'provision'])->whereDate('paid_on', '>=', $since)->pluck('paid_on')
+            ->merge(FundUse::query()->whereDate('used_on', '>=', $since)->pluck('used_on'));
+        foreach ($fundDates->unique() as $date) {
+            $date = Carbon::parse($date)->toDateString();
+            if ($this->fundBalance('reserve', $date) < 0 || $this->fundBalance('provision', $date) < 0) {
+                $this->fail('paid_on', 'Este movimiento dejaría un fondo negativo en una fecha con usos ya registrados.');
+            }
         }
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\FundUseFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['financial_period_id', 'period_item_id', 'type', 'amount_usd_cents', 'used_on', 'actor_id'])]
 class FundUse extends Model
 {
-    /** @use HasFactory<\Database\Factories\FundUseFactory> */
+    /** @use HasFactory<FundUseFactory> */
     use HasFactory;
 
     protected function casts(): array

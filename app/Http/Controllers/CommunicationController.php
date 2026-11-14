@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
+use App\Jobs\SendCondominiumEmail;
+use App\Models\AuditLog;
+use App\Models\Charge;
+use App\Models\Delivery;
+use App\Models\Occupancy;
+use App\Models\Person;
+use App\Models\Property;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use App\Models\{Delivery, Occupancy, Person, Charge, Property, AuditLog};
-use App\Jobs\SendCondominiumEmail;
 
 class CommunicationController extends Controller
 {
@@ -56,14 +61,17 @@ class CommunicationController extends Controller
                     $created[] = $delivery;
                 }
             }
+
             return $created;
         });
+
         return response()->json(['deliveries' => $deliveries, 'message' => count($deliveries).' correos preparados'.($this->isPreview() ? ' en vista previa. Configura el servicio de correo para entregarlos.' : ' para envío.')]);
     }
 
     public function preview(Request $request, Delivery $delivery): View
     {
         abort_unless($request->user()->allows('communications.manage') && ($request->user()->hasGlobalPropertyAccess() || $delivery->created_by === $request->user()->id), 403);
+
         return view('emails.delivery', ['delivery' => $delivery]);
     }
 
@@ -77,6 +85,7 @@ class CommunicationController extends Controller
             $locked->update(['status' => 'queued', 'error' => null]);
             SendCondominiumEmail::dispatch($locked->id)->afterCommit();
         });
+
         return response()->json(['message' => 'Correo puesto en cola.']);
     }
 

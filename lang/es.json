@@ -1,0 +1,20 @@
+{
+    "The given data was invalid.": "Revisa los datos del formulario.",
+    "(and :count more error)": "(y :count error adicional)",
+    "(and :count more errors)": "(y :count errores adicionales)",
+    "Unauthorized": "Acceso no autorizado",
+    "Forbidden": "Acceso restringido",
+    "Not Found": "Recurso no encontrado",
+    "Page Expired": "La sesión ha vencido",
+    "Too Many Requests": "Demasiadas solicitudes",
+    "Server Error": "Error del servidor",
+    "Service Unavailable": "Servicio temporalmente no disponible",
+    "Go Home": "Ir al inicio",
+    "Go Back": "Volver",
+    "Showing": "Mostrando",
+    "to": "a",
+    "of": "de",
+    "results": "resultados",
+    "Pagination Navigation": "Navegación entre páginas",
+    "Go to page :page": "Ir a la página :page"
+}

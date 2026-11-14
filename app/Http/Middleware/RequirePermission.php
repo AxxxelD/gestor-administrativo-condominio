@@ -9,7 +9,7 @@ use Symfony\Component\HttpFoundation\Response;
 class RequirePermission
 {
     /**
-     * Handle an incoming request.
+     * Procesa una solicitud entrante.
      *
      * @param  Closure(Request): (Response)  $next
      */

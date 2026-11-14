@@ -4,7 +4,10 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "node iniciar-desarrollo.mjs",
+        "dev:assets": "vite",
+        "iniciar": "node iniciar-desarrollo.mjs",
+        "comprobar": "node iniciar-desarrollo.mjs --comprobar"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

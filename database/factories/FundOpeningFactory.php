@@ -2,9 +2,11 @@
 
 namespace Database\Factories;
 
+use App\Models\FundOpening;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/** @extends Factory<\App\Models\FundOpening> */
+/** @extends Factory<FundOpening> */
 class FundOpeningFactory extends Factory
 {
     public function definition(): array
@@ -13,7 +15,7 @@ class FundOpeningFactory extends Factory
             'type' => 'reserve',
             'amount_usd_cents' => 0,
             'date' => '2026-01-01',
-            'actor_id' => \App\Models\User::factory(),
+            'actor_id' => User::factory(),
         ];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\AllocationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['property_credit_id', 'charge_id', 'principal_usd_cents', 'reserve_usd_cents', 'provision_usd_cents', 'applied_on', 'voided_at'])]
 class Allocation extends Model
 {
-    /** @use HasFactory<\Database\Factories\AllocationFactory> */
+    /** @use HasFactory<AllocationFactory> */
     use HasFactory;
 
     protected function casts(): array

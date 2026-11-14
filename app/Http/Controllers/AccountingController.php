@@ -2,14 +2,27 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Models\AuditLog;
+use App\Models\BankAccount;
+use App\Models\ExchangeRate;
+use App\Models\Expense;
+use App\Models\ExpenseTemplate;
+use App\Models\FinancialPeriod;
+use App\Models\Occupancy;
+use App\Models\Payment;
+use App\Models\PeriodItem;
+use App\Models\Person;
+use App\Models\Setting;
+use App\Services\ExchangeRateService;
+use App\Services\FinanceService;
+use App\Services\Money;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use App\Models\{FinancialPeriod, PeriodItem, ExpenseTemplate, BankAccount, Payment, Expense, ExchangeRate, Setting, AuditLog, Occupancy, Person};
-use App\Services\{FinanceService, Money, ExchangeRateService};
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class AccountingController extends Controller
 {
@@ -21,6 +34,7 @@ class AccountingController extends Controller
         $data = $request->validate(['month' => ['required', 'date_format:Y-m', 'unique:financial_periods,month'], 'reserve_basis_points' => ['required', 'integer', 'between:0,10000']]);
         $period = FinancialPeriod::create($data + ['status' => 'draft']);
         AuditLog::record('create', $period, $data);
+
         return response()->json($period, 201);
     }
 
@@ -34,6 +48,7 @@ class AccountingController extends Controller
             }
             AuditLog::record('load_recurring', $period);
         });
+
         return response()->json(['message' => 'Conceptos habituales cargados.']);
     }
 
@@ -45,8 +60,10 @@ class AccountingController extends Controller
             $this->draft($period);
             $item = PeriodItem::create($data + ['financial_period_id' => $period->id]);
             AuditLog::record('create', $item, $data);
+
             return $item;
         });
+
         return response()->json($item, 201);
     }
 
@@ -59,6 +76,7 @@ class AccountingController extends Controller
             $item->update($data);
             AuditLog::record('update', $item, $data);
         });
+
         return response()->json($item);
     }
 
@@ -70,6 +88,7 @@ class AccountingController extends Controller
             AuditLog::record('delete', $item, $item->only(['description', 'amount_usd_cents']));
             $item->delete();
         });
+
         return response()->json(['message' => 'Concepto retirado del borrador.']);
     }
 
@@ -89,19 +108,22 @@ class AccountingController extends Controller
             Storage::disk('local')->delete($path);
             throw $exception;
         }
+
         return response()->json($item);
     }
 
-    public function downloadAttachment(Request $request, PeriodItem $item): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    public function downloadAttachment(Request $request, PeriodItem $item): BinaryFileResponse
     {
         $this->permit($request, 'finance.manage');
         abort_unless($item->attachment_path && Storage::disk('local')->exists($item->attachment_path), 404);
+
         return response()->download(Storage::disk('local')->path($item->attachment_path), $item->attachment_name);
     }
 
     public function issue(Request $request, FinancialPeriod $period, FinanceService $finance): JsonResponse
     {
         $this->permit($request, 'finance.manage');
+
         return response()->json(DB::transaction(function () use ($finance, $period, $request): FinancialPeriod {
             $result = $finance->issuePeriod($period, $request->user()->id);
             AuditLog::record('issue', $result);
@@ -119,6 +141,7 @@ class AccountingController extends Controller
                     'settings' => Setting::values(),
                 ]])->save();
             }
+
             return $result;
         }));
     }
@@ -132,6 +155,7 @@ class AccountingController extends Controller
         $template ??= new ExpenseTemplate;
         $template->fill($data)->save();
         AuditLog::record('save', $template, $data);
+
         return response()->json($template);
     }
 
@@ -141,6 +165,7 @@ class AccountingController extends Controller
         $data = $request->validate(['name' => ['required', 'string', 'max:150'], 'opening_balance_bs' => ['required', 'numeric', 'between:0,1000000000', 'regex:/^\d+(\.\d{1,2})?$/']]);
         $bank = BankAccount::create(['name' => $data['name'], 'opening_balance_bs_cents' => Money::parse((string) $data['opening_balance_bs']), 'active' => true]);
         AuditLog::record('create', $bank);
+
         return response()->json($bank, 201);
     }
 
@@ -158,8 +183,10 @@ class AccountingController extends Controller
         $payment = DB::transaction(function () use ($finance, $data, $request): Payment {
             $payment = $finance->recordPayment($data, $request->user()->id);
             AuditLog::record('payment', $payment, ['rate_date' => $request->input('paid_on'), 'rate_source' => $request->input('rate_source', 'Registro autorizado')]);
+
             return $payment;
         });
+
         return response()->json($payment, 201);
     }
 
@@ -170,15 +197,17 @@ class AccountingController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'min:5', 'max:500']]);
         $result = $finance->voidPayment($payment, $data['reason'], $request->user()->id);
         AuditLog::record('void', $result, $data);
+
         return response()->json($result);
     }
 
     public function expense(Request $request, FinanceService $finance): JsonResponse
     {
         $this->permit($request, 'treasury.manage');
-        $data = $this->transferData($request) + $request->validate(['description' => ['required', 'string', 'max:255'], 'fund' => ['required', Rule::in(['operating', 'reserve', 'provision'])], 'period_item_id' => ['nullable', 'exists:period_items,id']]);
+        $data = $this->transferData($request) + $request->validate(['description' => ['required', 'string', 'max:255'], 'reference' => ['nullable', 'string', 'max:100'], 'fund' => ['required', Rule::in(['operating', 'reserve', 'provision'])], 'period_item_id' => ['nullable', 'exists:period_items,id']]);
         $expense = $finance->recordExpense($data, $request->user()->id);
         AuditLog::record('expense', $expense);
+
         return response()->json($expense, 201);
     }
 
@@ -188,6 +217,7 @@ class AccountingController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'min:5', 'max:500']]);
         $result = $finance->voidExpense($expense, $data['reason'], $request->user()->id);
         AuditLog::record('void', $result, $data);
+
         return response()->json($result);
     }
 
@@ -197,6 +227,7 @@ class AccountingController extends Controller
         $data = $request->validate(['fund' => ['required', Rule::in(['reserve', 'provision'])], 'amount_usd' => ['required', 'numeric', 'between:0,10000000', 'regex:/^\d+(\.\d{1,2})?$/'], 'date' => ['required', 'date_format:Y-m-d', 'before_or_equal:today']]);
         $opening = $finance->setFundOpening($data['fund'], Money::parse((string) $data['amount_usd']), $data['date'], $request->user()->id);
         AuditLog::record('opening', $opening);
+
         return response()->json($opening);
     }
 
@@ -204,6 +235,7 @@ class AccountingController extends Controller
     {
         $this->permit($request, 'finance.view');
         validator(['date' => $date], ['date' => ['required', 'date_format:Y-m-d', 'before_or_equal:today']])->validate();
+
         return response()->json($rates->lookup($date));
     }
 
@@ -214,6 +246,7 @@ class AccountingController extends Controller
         $previous = ExchangeRate::where('date', $data['date'])->first()?->toArray();
         $rate = ExchangeRate::updateOrCreate(['date' => $data['date']], ['rate_micros' => Money::rate((string) $data['rate']), 'reference_date' => $data['date'], 'source' => 'Manual', 'reason' => $data['reason'], 'created_by' => $request->user()->id]);
         AuditLog::record('rate', $rate, ['previous' => $previous, 'reason' => $data['reason']]);
+
         return response()->json($rate);
     }
 
@@ -222,9 +255,10 @@ class AccountingController extends Controller
         $this->permit($request, 'settings.manage');
         $data = $request->validate(['condominium_name' => ['required', 'string', 'max:150'], 'rif' => ['nullable', 'string', 'max:30'], 'contact_email' => ['nullable', 'email'], 'bank_instructions' => ['nullable', 'string', 'max:1500'], 'notes' => ['nullable', 'string', 'max:4000']]);
         foreach ($data as $key => $value) {
-            $setting = Setting::updateOrCreate(['key' => $key], ['value' => $value]);
+            $setting = Setting::updateOrCreate(['key' => $key], ['value' => $value ?? '']);
             AuditLog::record('settings', $setting);
         }
+
         return response()->json(Setting::values());
     }
 
@@ -246,6 +280,7 @@ class AccountingController extends Controller
         $data = $request->validate(['description' => ['required', 'string', 'max:255'], 'category' => ['required', Rule::in(self::CATEGORIES)], 'amount_usd' => ['required', 'numeric', 'between:-10000000,10000000', 'regex:/^-?\d+(\.\d{1,2})?$/'], 'is_provision' => ['required', 'boolean'], 'service_date' => ['nullable', 'date_format:Y-m-d']]);
         $data['amount_usd_cents'] = Money::parse((string) $data['amount_usd']);
         unset($data['amount_usd']);
+
         return $data;
     }
 
@@ -258,7 +293,11 @@ class AccountingController extends Controller
         if ((! $saved || $saved->rate_micros !== $data['rate_micros']) && ! $request->user()->allows('finance.manage')) {
             throw ValidationException::withMessages(['rate' => 'Selecciona la tasa registrada para esa fecha o solicita que la administradora la registre.']);
         }
+        $usesSaved = $saved && $saved->rate_micros === $data['rate_micros'];
+        $data['rate_source'] = $usesSaved ? $saved->source : 'Manual al registrar';
+        $data['rate_reference_date'] = $usesSaved ? $saved->reference_date : $data['paid_on'];
         unset($data['amount_bs'], $data['rate']);
+
         return $data;
     }
 }

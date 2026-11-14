@@ -2,16 +2,19 @@
 
 namespace Database\Factories;
 
+use App\Models\Allocation;
+use App\Models\Charge;
+use App\Models\PropertyCredit;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/** @extends Factory<\App\Models\Allocation> */
+/** @extends Factory<Allocation> */
 class AllocationFactory extends Factory
 {
     public function definition(): array
     {
         return [
-            'property_credit_id' => \App\Models\PropertyCredit::factory(),
-            'charge_id' => \App\Models\Charge::factory(),
+            'property_credit_id' => PropertyCredit::factory(),
+            'charge_id' => Charge::factory(),
             'principal_usd_cents' => 1000,
             'reserve_usd_cents' => 0,
             'provision_usd_cents' => 0,

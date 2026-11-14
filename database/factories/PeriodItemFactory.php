@@ -2,15 +2,17 @@
 
 namespace Database\Factories;
 
+use App\Models\FinancialPeriod;
+use App\Models\PeriodItem;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/** @extends Factory<\App\Models\PeriodItem> */
+/** @extends Factory<PeriodItem> */
 class PeriodItemFactory extends Factory
 {
     public function definition(): array
     {
         return [
-            'financial_period_id' => \App\Models\FinancialPeriod::factory(),
+            'financial_period_id' => FinancialPeriod::factory(),
             'category' => 'sector_fixed',
             'description' => 'Servicio de vigilancia',
             'amount_usd_cents' => 90000,

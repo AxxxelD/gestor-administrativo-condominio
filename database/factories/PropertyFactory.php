@@ -2,9 +2,10 @@
 
 namespace Database\Factories;
 
+use App\Models\Property;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/** @extends Factory<\App\Models\Property> */
+/** @extends Factory<Property> */
 class PropertyFactory extends Factory
 {
     public function definition(): array

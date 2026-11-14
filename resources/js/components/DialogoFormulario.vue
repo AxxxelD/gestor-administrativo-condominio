@@ -13,25 +13,25 @@ defineProps({
     readonly: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['close', 'submit']);
-const dialog = ref(null);
+const emitir = defineEmits(['close', 'submit']);
+const dialogo = ref(null);
 
 onMounted(async () => {
-    dialog.value.showModal();
+    dialogo.value.showModal();
     await nextTick();
-    dialog.value.querySelector('input, select, textarea')?.focus();
+    dialogo.value.querySelector('input, select, textarea')?.focus();
 });
 </script>
 
 <template>
-    <dialog ref="dialog" class="form-dialog" :class="{ 'dialog-wide': wide }" aria-labelledby="dialog-title" @cancel.prevent="!busy && emit('close')">
-        <form @submit.prevent="emit('submit')">
+    <dialog ref="dialogo" class="form-dialog" :class="{ 'dialog-wide': wide }" aria-labelledby="dialog-title" @cancel.prevent="!busy && emitir('close')">
+        <form @submit.prevent="emitir('submit')">
             <header class="dialog-header">
                 <div>
                     <h2 id="dialog-title">{{ title }}</h2>
                     <p v-if="description" class="muted">{{ description }}</p>
                 </div>
-                <button type="button" class="icon-button" aria-label="Cerrar" :disabled="busy" @click="emit('close')"><X :size="20" /></button>
+                <button type="button" class="icon-button" aria-label="Cerrar" :disabled="busy" @click="emitir('close')"><X :size="20" /></button>
             </header>
             <div class="dialog-body">
                 <div v-if="error" class="alert error" role="alert">
@@ -41,7 +41,7 @@ onMounted(async () => {
                 <slot />
             </div>
             <footer class="dialog-footer">
-                <button type="button" class="button secondary" :disabled="busy" @click="emit('close')">{{ readonly ? 'Cerrar' : 'Cancelar' }}</button>
+                <button type="button" class="button secondary" :disabled="busy" @click="emitir('close')">{{ readonly ? 'Cerrar' : 'Cancelar' }}</button>
                 <button v-if="!readonly" type="submit" class="button primary" :disabled="busy"><LoaderCircle v-if="busy" class="spin" :size="17" />{{ busy ? 'Guardando…' : submitLabel }}</button>
             </footer>
         </form>

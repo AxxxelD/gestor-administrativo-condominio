@@ -7,7 +7,6 @@ use App\Models\BankAccount;
 use App\Models\Charge;
 use App\Models\FinancialPeriod;
 use App\Models\FundUse;
-use App\Models\Payment;
 use App\Models\PeriodItem;
 use App\Models\Property;
 use App\Models\User;
@@ -56,6 +55,8 @@ class FinanceServiceTest extends TestCase
         $this->assertSame(-21, $issued->rounding_adjustment_usd_cents);
         $this->assertSame(100001, $issued->items_snapshot[0]['amount_usd_cents']);
         $this->assertDatabaseCount('charges', 90);
+        $this->assertSame(10000, (int) Charge::query()->sum('reserve_usd_cents'));
+        $this->assertSame(10, Charge::query()->where('reserve_usd_cents', 112)->count());
         $this->assertSame(109980, (int) Charge::query()->sum('principal_usd_cents') + (int) Charge::query()->sum('reserve_usd_cents'));
         $this->assertSame(0, $finance->dashboard()['bank_bs_cents']);
     }
@@ -86,6 +87,45 @@ class FinanceServiceTest extends TestCase
         $this->assertSame(500, (int) $charge->allocations()->sum('principal_usd_cents'));
         $this->assertDatabaseCount('payments', 1);
         $this->assertDatabaseCount('property_credits', 2);
+    }
+
+    public function test_issuance_creates_debt_on_actual_emission_without_an_invented_due_date(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        $properties = Property::factory()->count(90)->create();
+        $finance = app(FinanceService::class);
+        $finance->setOpeningBalance($properties[0], 2000, '2026-01-01', $user->id);
+        $period = FinancialPeriod::factory()->create(['month' => '2026-10', 'due_on' => null]);
+        PeriodItem::factory()->for($period, 'period')->create(['amount_usd_cents' => 90000]);
+
+        $this->assertSame(2000, $finance->propertyStatement($properties[0])['debt_usd_cents']);
+        $finance->issuePeriod($period, $user->id);
+        $charge = $period->charges()->first();
+        $this->assertSame('2026-11-12', $charge->charged_on->toDateString());
+        $this->assertNull($charge->due_on);
+        $this->travelTo(now()->setDate(2027, 1, 12));
+        $statement = $finance->propertyStatement($properties[0]);
+        $this->assertSame(3100, $statement['debt_usd_cents']);
+        $this->assertSame(0, $statement['overdue_usd_cents']);
+    }
+
+    public function test_transfers_keep_the_rate_reference_and_expense_bank_reference(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        $property = Property::factory()->create();
+        $bank = BankAccount::factory()->create(['opening_balance_bs_cents' => 500000]);
+        $finance = app(FinanceService::class);
+        $metadata = ['rate_source' => 'DolarApi', 'rate_reference_date' => '2026-11-09'];
+        $payment = $finance->recordPayment($this->paymentData($bank, [['property_id' => $property->id, 'amount_usd_cents' => 1000]], 100000) + $metadata, $user->id);
+        $expense = $finance->recordExpense($metadata + ['bank_account_id' => $bank->id, 'paid_on' => '2026-11-10', 'amount_bs_cents' => 200000, 'rate_micros' => 100000000, 'reference' => 'EGRESO-123', 'description' => 'Jardinería', 'fund' => 'operating', 'idempotency_key' => 'expense-metadata'], $user->id);
+
+        $this->assertSame('DolarApi', $payment->refresh()->rate_source);
+        $this->assertSame('2026-11-09', $payment->rate_reference_date->toDateString());
+        $this->assertSame('DolarApi', $expense->refresh()->rate_source);
+        $this->assertSame('2026-11-09', $expense->rate_reference_date->toDateString());
+        $this->assertSame('EGRESO-123', $expense->reference);
     }
 
     public function test_advance_is_applied_once_to_future_period_and_void_restores_the_debt_and_funds(): void
@@ -221,6 +261,169 @@ class FinanceServiceTest extends TestCase
         $this->assertSame('draft', $period->refresh()->status);
         $this->assertDatabaseCount('charges', 0);
         $this->assertDatabaseCount('fund_uses', 0);
+    }
+
+    public function test_rejects_a_changed_idempotent_request_and_duplicate_bank_reference(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        $property = Property::factory()->create();
+        $bank = BankAccount::factory()->create();
+        $finance = app(FinanceService::class);
+        $data = $this->paymentData($bank, [['property_id' => $property->id, 'amount_usd_cents' => 1000]], 100000);
+        $finance->recordPayment($data, $user->id);
+
+        try {
+            $finance->recordPayment(array_replace($data, ['reference' => 'changed']), $user->id);
+            $this->fail('Se aceptó cambiar una solicitud previamente registrada.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('idempotency_key', $exception->errors());
+        }
+        try {
+            $finance->recordPayment(array_replace($data, ['idempotency_key' => 'another-key']), $user->id);
+            $this->fail('Se aceptó una referencia bancaria duplicada.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('reference', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertSame(100000, $finance->bankBalance($bank));
+    }
+
+    public function test_rejects_voiding_cash_already_spent_and_restores_the_payment_atomically(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        $property = Property::factory()->create();
+        $bank = BankAccount::factory()->create();
+        $finance = app(FinanceService::class);
+        $payment = $finance->recordPayment($this->paymentData($bank, [['property_id' => $property->id, 'amount_usd_cents' => 1000]], 100000), $user->id);
+        $finance->recordExpense(['bank_account_id' => $bank->id, 'paid_on' => '2026-11-10', 'amount_bs_cents' => 80000,
+            'rate_micros' => 100000000, 'description' => 'Servicio pagado', 'fund' => 'operating', 'idempotency_key' => 'expense-1'], $user->id);
+
+        try {
+            $finance->voidPayment($payment, 'Comprobante equivocado', $user->id);
+            $this->fail('Se anuló un pago que ya financió un egreso.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+
+        $this->assertSame('posted', $payment->refresh()->status);
+        $this->assertSame(20000, $finance->bankBalance($bank));
+        $this->assertSame(1000, $finance->propertyStatement($property)['credit_usd_cents']);
+    }
+
+    public function test_rejects_future_payments_and_payments_before_opening(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        $property = Property::factory()->create();
+        $bank = BankAccount::factory()->create(['opening_date' => '2026-11-10']);
+        $finance = app(FinanceService::class);
+        $data = $this->paymentData($bank, [['property_id' => $property->id, 'amount_usd_cents' => 1000]], 100000);
+        try {
+            $finance->recordPayment(array_replace($data, ['paid_on' => '2026-11-13']), $user->id);
+            $this->fail('Se registró un pago futuro.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('paid_on', $exception->errors());
+        }
+        try {
+            $finance->recordPayment(array_replace($data, ['paid_on' => '2026-11-09']), $user->id);
+            $this->fail('Se registró un pago anterior a la apertura bancaria.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('bank_account_id', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_backdated_expense_cannot_create_an_intermediate_negative_bank_balance(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        $property = Property::factory()->create();
+        $bank = BankAccount::factory()->create(['opening_balance_bs_cents' => 100000]);
+        $finance = app(FinanceService::class);
+        $finance->recordExpense(['bank_account_id' => $bank->id, 'paid_on' => '2026-11-05', 'amount_bs_cents' => 80000,
+            'rate_micros' => 100000000, 'description' => 'Servicio pagado', 'fund' => 'operating', 'idempotency_key' => 'expense-1'], $user->id);
+        $finance->recordPayment($this->paymentData($bank, [['property_id' => $property->id, 'amount_usd_cents' => 1000]], 100000), $user->id);
+
+        try {
+            $finance->recordExpense(['bank_account_id' => $bank->id, 'paid_on' => '2026-11-01', 'amount_bs_cents' => 50000,
+                'rate_micros' => 100000000, 'description' => 'Egreso antiguo', 'fund' => 'operating', 'idempotency_key' => 'expense-2'], $user->id);
+            $this->fail('Se aceptó dejar negativo el saldo del 5 de noviembre.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('paid_on', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('expenses', 1);
+        $this->assertSame(120000, $finance->bankBalance($bank));
+    }
+
+    public function test_distributes_reserve_and_provision_remainders_within_each_equal_charge(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        $properties = Property::factory()->count(90)->create();
+        $bank = BankAccount::factory()->create();
+        $period = FinancialPeriod::factory()->create();
+        PeriodItem::factory()->for($period, 'period')->create(['amount_usd_cents' => 9]);
+        PeriodItem::factory()->for($period, 'period')->create(['amount_usd_cents' => 9081, 'is_provision' => true]);
+        $finance = app(FinanceService::class);
+
+        $issued = $finance->issuePeriod($period, $user->id);
+        $splits = $properties->map(fn (Property $property): array => ['property_id' => $property->id, 'amount_usd_cents' => 111])->all();
+        $finance->recordPayment(array_replace($this->paymentData($bank, $splits, 999000), ['paid_on' => '2026-11-12']), $user->id);
+
+        $this->assertSame(-9, $issued->rounding_adjustment_usd_cents);
+        $this->assertSame(909, (int) $issued->charges->sum('reserve_usd_cents'));
+        $this->assertSame(9081, (int) $issued->charges->sum('provision_usd_cents'));
+        $this->assertSame(9, $issued->charges->where('principal_usd_cents', 100)->count());
+        $this->assertSame(81, $issued->charges->where('provision_usd_cents', 101)->count());
+        foreach ($issued->charges as $charge) {
+            $this->assertSame(111, $charge->principal_usd_cents + $charge->reserve_usd_cents);
+            $this->assertLessThanOrEqual($charge->principal_usd_cents, $charge->provision_usd_cents);
+        }
+        $this->assertSame(909, $finance->fundBalance('reserve'));
+        $this->assertSame(9081, $finance->fundBalance('provision'));
+    }
+
+    public function test_rejects_rounding_that_would_reduce_the_requested_provision(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        Property::factory()->count(90)->create();
+        $period = FinancialPeriod::factory()->create();
+        PeriodItem::factory()->for($period, 'period')->create(['amount_usd_cents' => 9090, 'is_provision' => true]);
+
+        try {
+            app(FinanceService::class)->issuePeriod($period, $user->id);
+            $this->fail('Se emitió una provisión reducida por redondeo.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('Aumenta el importe operativo', $exception->errors()['items'][0]);
+        }
+
+        $this->assertSame('draft', $period->refresh()->status);
+        $this->assertDatabaseCount('charges', 0);
+        $this->assertDatabaseCount('fund_uses', 0);
+    }
+
+    public function test_an_annulled_transfer_can_be_corrected_using_the_same_bank_reference(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 12));
+        $user = User::factory()->create();
+        $property = Property::factory()->create();
+        $bank = BankAccount::factory()->create();
+        $finance = app(FinanceService::class);
+        $data = $this->paymentData($bank, [['property_id' => $property->id, 'amount_usd_cents' => 1000]], 100000);
+        $original = $finance->recordPayment($data, $user->id);
+        $finance->voidPayment($original, 'Corregir distribución', $user->id);
+        $data['idempotency_key'] = 'correccion';
+        $corrected = $finance->recordPayment($data, $user->id);
+        $this->assertNotSame($original->id, $corrected->id);
+        $this->assertSame($corrected->id, $finance->recordPayment($data, $user->id)->id);
+        $this->assertSame(100000, $finance->bankBalance($bank));
+        $this->assertDatabaseCount('payments', 2);
     }
 
     /** @param array<int, array{property_id: int, amount_usd_cents: int}> $splits */

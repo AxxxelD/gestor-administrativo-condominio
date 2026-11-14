@@ -1,20 +1,25 @@
 let csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 export async function api(path, options = {}) {
+    const multipart = options.body instanceof FormData;
     const response = await fetch(path, {
         credentials: 'same-origin',
         ...options,
         headers: {
             Accept: 'application/json',
-            'Content-Type': 'application/json',
+            ...(multipart ? {} : { 'Content-Type': 'application/json' }),
             'X-CSRF-TOKEN': csrfToken,
             ...options.headers,
         },
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body: options.body === undefined || multipart ? options.body : JSON.stringify(options.body),
+    }).catch(() => {
+        throw new Error('No se pudo conectar con el servidor. Comprueba que el entorno de desarrollo esté iniciado e intenta nuevamente.');
     });
 
     const contentType = response.headers.get('content-type') ?? '';
-    const data = contentType.includes('application/json') ? await response.json() : {};
+    const data = contentType.includes('application/json') ? await response.json().catch(() => {
+        throw new Error('El servidor devolvió una respuesta que no se pudo interpretar. Intenta nuevamente.');
+    }) : {};
 
     if (data.csrf_token) {
         csrfToken = data.csrf_token;
@@ -44,7 +49,7 @@ export function decimalAmount(cents) {
 }
 
 export function localDate() {
-    const parts = new Intl.DateTimeFormat('en-CA', {
+    const parts = new Intl.DateTimeFormat('es-VE', {
         timeZone: 'America/Caracas',
         year: 'numeric',
         month: '2-digit',

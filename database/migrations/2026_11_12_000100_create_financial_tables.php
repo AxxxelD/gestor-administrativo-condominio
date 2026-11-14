@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -79,7 +79,7 @@ return new class extends Migration
             $table->string('kind')->default('period');
             $table->string('description');
             $table->date('charged_on');
-            $table->date('due_on');
+            $table->date('due_on')->nullable();
             $table->bigInteger('principal_usd_cents');
             $table->bigInteger('reserve_usd_cents')->default(0);
             $table->bigInteger('provision_usd_cents')->default(0);

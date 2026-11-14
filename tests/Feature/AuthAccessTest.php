@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -163,5 +164,17 @@ class AuthAccessTest extends TestCase
             'password' => '123',
             'permissions' => ['anything.manage'],
         ])->assertUnprocessable()->assertJsonValidationErrors(['password', 'permissions.0']);
+    }
+
+    public function test_existing_account_with_null_scope_can_update_profile_without_changing_access(): void
+    {
+        $administrator = User::factory()->administrator()->create(['permissions' => null, 'property_ids' => null]);
+        $this->actingAs($administrator)->putJson('/api/users/'.$administrator->id, [
+            'name' => 'Administradora actualizada', 'email' => $administrator->email,
+        ])->assertOk();
+        $this->assertSame('admin', $administrator->refresh()->role);
+        $audit = AuditLog::latest()->first();
+        $this->assertSame('update', $audit->action);
+        $this->assertArrayNotHasKey('password', $audit->details);
     }
 }

@@ -46,7 +46,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "@php artisan dev"
+        "node iniciar-desarrollo.mjs"
         ],
         "test": [
             "@php artisan config:clear --ansi @no_additional_args",

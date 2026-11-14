@@ -42,6 +42,15 @@ return new class extends Migration
         Schema::table('charges', function (Blueprint $table) {
             $table->json('document_snapshot')->nullable();
         });
+        foreach (['payments', 'expenses'] as $name) {
+            Schema::table($name, function (Blueprint $table) {
+                $table->string('rate_source')->nullable();
+                $table->date('rate_reference_date')->nullable();
+            });
+        }
+        Schema::table('expenses', function (Blueprint $table) {
+            $table->string('reference')->nullable();
+        });
         Schema::create('settings', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique();
@@ -83,6 +92,14 @@ return new class extends Migration
         Schema::dropIfExists('exchange_rates');
         Schema::table('charges', function (Blueprint $table) {
             $table->dropColumn('document_snapshot');
+        });
+        foreach (['payments', 'expenses'] as $name) {
+            Schema::table($name, function (Blueprint $table) {
+                $table->dropColumn(['rate_source', 'rate_reference_date']);
+            });
+        }
+        Schema::table('expenses', function (Blueprint $table) {
+            $table->dropColumn('reference');
         });
         Schema::table('period_items', function (Blueprint $table) {
             $table->dropUnique(['financial_period_id', 'expense_template_id']);

@@ -2,15 +2,17 @@
 
 namespace Database\Factories;
 
+use App\Models\Charge;
+use App\Models\Property;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/** @extends Factory<\App\Models\Charge> */
+/** @extends Factory<Charge> */
 class ChargeFactory extends Factory
 {
     public function definition(): array
     {
         return [
-            'property_id' => \App\Models\Property::factory(),
+            'property_id' => Property::factory(),
             'kind' => 'opening',
             'description' => 'Deuda inicial',
             'charged_on' => '2026-01-01',

@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Models\AuditLog;
+use App\Models\Occupancy;
+use App\Models\Person;
+use App\Models\Property;
+use App\Services\FinanceService;
+use App\Services\Money;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use App\Models\{Property, Person, Occupancy, AuditLog};
-use App\Services\{FinanceService, Money};
 
 class CommunityController extends Controller
 {
@@ -22,6 +26,7 @@ class CommunityController extends Controller
         $property ??= new Property;
         $property->fill($data)->save();
         AuditLog::record('save', $property, $data);
+
         return response()->json($property);
     }
 
@@ -37,6 +42,7 @@ class CommunityController extends Controller
         $person ??= new Person;
         $person->fill($data)->save();
         AuditLog::record('save', $person);
+
         return response()->json($person);
     }
 
@@ -53,6 +59,7 @@ class CommunityController extends Controller
         $occupancy ??= new Occupancy;
         $occupancy->fill($data)->save();
         AuditLog::record('save', $occupancy, $data);
+
         return response()->json($occupancy);
     }
 
@@ -67,12 +74,20 @@ class CommunityController extends Controller
             $finance->setOpeningBalance($property, Money::parse((string) $data['amount_usd']), $data['date'], $request->user()->id);
             AuditLog::record('opening', $property, $data);
         });
+
         return response()->json(['message' => 'Saldo inicial registrado.']);
     }
 
     public function statement(Request $request, Property $property, FinanceService $finance): JsonResponse
     {
         abort_unless($request->user()->allows('finance.view') && $request->user()->canAccessProperty($property->id), 403);
-        return response()->json($finance->propertyStatement($property));
+        $statement = $finance->propertyStatement($property);
+        if (! $request->user()->hasGlobalPropertyAccess()) {
+            foreach ($statement['credits'] as $credit) {
+                $credit->unsetRelation('payment');
+            }
+        }
+
+        return response()->json($statement);
     }
 }

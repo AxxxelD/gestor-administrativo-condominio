@@ -2,10 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use App\Models\{Property, Person, Occupancy, FinancialPeriod, PeriodItem, ExpenseTemplate, BankAccount, Payment, Expense, Charge, ExchangeRate, Setting, Delivery, FundOpening, AuditLog};
+use App\Models\AuditLog;
+use App\Models\BankAccount;
+use App\Models\Charge;
+use App\Models\Delivery;
+use App\Models\ExchangeRate;
+use App\Models\Expense;
+use App\Models\ExpenseTemplate;
+use App\Models\FinancialPeriod;
+use App\Models\FundOpening;
+use App\Models\Occupancy;
+use App\Models\Payment;
+use App\Models\PeriodItem;
+use App\Models\Person;
+use App\Models\Property;
+use App\Models\Setting;
 use App\Services\FinanceService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class WorkspaceController extends Controller
 {
@@ -36,6 +50,7 @@ class WorkspaceController extends Controller
         $canViewReport = $user->allows('reports.view');
         $periods = FinancialPeriod::query()->when(! $user->allows('finance.manage'), fn ($query) => $query->where('status', 'issued'))->orderByDesc('month')->get();
         $items = PeriodItem::whereIn('financial_period_id', $periods->modelKeys())->get()->makeHidden(['attachment_path']);
+
         return response()->json([
             'user' => $user,
             'dashboard' => $dashboard,
@@ -51,7 +66,7 @@ class WorkspaceController extends Controller
             'charges' => $canViewFinance ? Charge::whereIn('property_id', $ids)->orderByDesc('charged_on')->get() : [],
             'rates' => ExchangeRate::orderByDesc('date')->limit(90)->get(),
             'settings' => Setting::values(),
-            'deliveries' => $user->allows('communications.manage') ? Delivery::latest()->limit(200)->get() : [],
+            'deliveries' => $user->allows('communications.manage') ? Delivery::query()->when(! $global, fn ($query) => $query->where('created_by', $user->id))->latest()->limit(200)->get() : [],
             'fund_openings' => $user->allows('treasury.view') ? FundOpening::all() : [],
             'audit' => $user->allows('settings.manage') ? AuditLog::latest()->limit(50)->get() : [],
             'mail_mode' => config('mail.default'),

@@ -1,7 +1,11 @@
 <?php
 
+use App\Http\Controllers\AccountingController;
+use App\Http\Controllers\CommunicationController;
+use App\Http\Controllers\CommunityController;
+use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\WorkspaceController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\{WorkspaceController, CommunityController, AccountingController, DocumentController, CommunicationController};
 
 Route::view('/', 'app')->name('home');
 Route::view('/login', 'app')->name('login');

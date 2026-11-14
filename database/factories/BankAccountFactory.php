@@ -2,9 +2,10 @@
 
 namespace Database\Factories;
 
+use App\Models\BankAccount;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/** @extends Factory<\App\Models\BankAccount> */
+/** @extends Factory<BankAccount> */
 class BankAccountFactory extends Factory
 {
     public function definition(): array

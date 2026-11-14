@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Property;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +36,7 @@ class UserController extends Controller
         $data = $this->validated($request);
         $this->authorizeAccessAssignment($request->user(), $data);
         $user = User::create($data);
+        AuditLog::record('create', $user, $user->only(['role', 'active', 'permissions', 'property_ids']));
 
         return response()->json(['user' => $user], 201);
     }
@@ -59,6 +61,7 @@ class UserController extends Controller
             }
 
             $target->update($data);
+            AuditLog::record('update', $target, $target->only(['role', 'active', 'permissions', 'property_ids']));
 
             return $target;
         });
@@ -106,7 +109,14 @@ class UserController extends Controller
     {
         if ($target?->is($actor)) {
             foreach (['role', 'active', 'permissions', 'property_ids'] as $field) {
-                if ($data[$field] !== $actor->{$field}) {
+                $current = $actor->{$field};
+                $requested = $data[$field];
+                if (in_array($field, ['permissions', 'property_ids'], true)) {
+                    $current ??= [];
+                    sort($current);
+                    sort($requested);
+                }
+                if ($requested !== $current) {
                     throw ValidationException::withMessages([$field => 'Tu propio acceso debe modificarlo otra cuenta autorizada.']);
                 }
             }

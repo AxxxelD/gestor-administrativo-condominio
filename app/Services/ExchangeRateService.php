@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ExchangeRate;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 
@@ -53,7 +54,7 @@ class ExchangeRateService
                     }
                 }
             }
-        } catch (\Illuminate\Http\Client\ConnectionException|\InvalidArgumentException $exception) {
+        } catch (ConnectionException|\InvalidArgumentException $exception) {
             report($exception);
         }
 
@@ -71,6 +72,7 @@ class ExchangeRateService
                     $effective = $xpath->evaluate('string(//*[contains(@class,"date-display-single")]/@content)');
                     if ($effective && CarbonImmutable::parse($effective)->toDateString() === $date && trim($amount) !== '') {
                         $value = str_replace(',', '.', str_replace('.', '', trim($amount)));
+
                         return $this->save($date, $value, 'BCV · sitio oficial', $date);
                     }
                 }

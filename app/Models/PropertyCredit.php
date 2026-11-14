@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\PropertyCreditFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['property_id', 'payment_id', 'amount_usd_cents', 'credited_on', 'kind', 'status', 'created_by'])]
 class PropertyCredit extends Model
 {
-    /** @use HasFactory<\Database\Factories\PropertyCreditFactory> */
+    /** @use HasFactory<PropertyCreditFactory> */
     use HasFactory;
 
     protected function casts(): array

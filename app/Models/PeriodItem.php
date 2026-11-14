@@ -2,16 +2,18 @@
 
 namespace App\Models;
 
+use Database\Factories\PeriodItemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Validation\ValidationException;
 
-#[Fillable(['financial_period_id', 'category', 'description', 'amount_usd_cents', 'is_provision'])]
+#[Fillable(['financial_period_id', 'category', 'description', 'amount_usd_cents', 'is_provision', 'expense_template_id', 'service_date', 'attachment_path', 'attachment_name'])]
 class PeriodItem extends Model
 {
-    /** @use HasFactory<\Database\Factories\PeriodItemFactory> */
+    /** @use HasFactory<PeriodItemFactory> */
     use HasFactory;
 
     protected static function booted(): void
@@ -19,7 +21,7 @@ class PeriodItem extends Model
         $checkPeriod = function (PeriodItem $item): void {
             $periodIds = array_filter([$item->financial_period_id, $item->getOriginal('financial_period_id')]);
             if (FinancialPeriod::query()->whereIn('id', $periodIds)->where('status', 'issued')->exists()) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['items' => 'Los conceptos de un período emitido son inmutables.']);
+                throw ValidationException::withMessages(['items' => 'Los conceptos de un período emitido son inmutables.']);
             }
         };
         static::saving($checkPeriod);
@@ -31,6 +33,7 @@ class PeriodItem extends Model
         return [
             'amount_usd_cents' => 'integer',
             'is_provision' => 'boolean',
+            'service_date' => 'date:Y-m-d',
         ];
     }
 
